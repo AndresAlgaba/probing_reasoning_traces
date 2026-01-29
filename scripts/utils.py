@@ -14,10 +14,10 @@ if TYPE_CHECKING:
     from vllm import LLM
 
 
-RNG = np.random.default_rng(0)  # seed for reproducibility
-BASELINE_DECILE = 0  # no-reasoning baseline
+RNG = np.random.default_rng(0)
+BASELINE_DECILE = 0
 DECILES = tuple(range(10, 101, 10))
-ALL_DECILES = (BASELINE_DECILE,) + DECILES  # includes baseline for probing
+ALL_DECILES = (BASELINE_DECILE,) + DECILES
 GPT_OSS_ANALYSIS_START = "<|channel|>analysis<|message|>"
 QWEN_THINK_START = "<think>\n"
 MODEL_CONFIGS: dict[str, dict[str, str | int]] = {
@@ -38,7 +38,6 @@ DATASET_CHOICES: dict[str, tuple[str, ...]] = {
 
 
 def dataset_choice_labels(dataset: str) -> tuple[str, ...]:
-    """Return the allowed multiple-choice labels for the dataset."""
     try:
         return DATASET_CHOICES[dataset]
     except KeyError as exc:
@@ -47,17 +46,14 @@ def dataset_choice_labels(dataset: str) -> tuple[str, ...]:
 
 @functools.lru_cache(maxsize=None)
 def get_tokenizer(model_key: str) -> AutoTokenizer:
-    """Load and cache a tokenizer for the given model key."""
     if model_key not in MODEL_CONFIGS:
         raise KeyError(f"Unknown model key '{model_key}'.")
     return AutoTokenizer.from_pretrained(MODEL_CONFIGS[model_key]["model_id"])
 
 
 def build_llm(model_key: str, *, enforce_eager: bool = False) -> "LLM":
-    """Instantiate an LLM for the configured model key."""
     from vllm import LLM
 
-    # Request up to 1000 logprobs per token to cover detailed analysis needs.
     max_logprobs = 1000
     cfg = MODEL_CONFIGS[model_key]
     if cfg["spec"] == "qwen":
@@ -81,7 +77,6 @@ def build_llm(model_key: str, *, enforce_eager: bool = False) -> "LLM":
 
 
 def clean_and_split_solution(df: pd.DataFrame) -> pd.DataFrame:
-    """Split raw solution into thoughts/reply columns."""
     if "solution" in df.columns:
         column = "solution"
     elif "response" in df.columns:
@@ -90,7 +85,6 @@ def clean_and_split_solution(df: pd.DataFrame) -> pd.DataFrame:
         raise KeyError("Expected a 'solution' or 'response' column in the dataframe.")
 
     split = df[column].str.split("\n</think>\n\n", n=1, expand=True)
-    # When the delimiter is missing, the split produces only column 0; guard the reply column.
     split = split.reindex(columns=[0, 1], fill_value="")
     df["thoughts"] = split[0].fillna("")
     df["reply"] = split[1].fillna("")
@@ -99,7 +93,6 @@ def clean_and_split_solution(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def clean_and_split_gpt_oss_solution(df: pd.DataFrame) -> pd.DataFrame:
-    """Split gpt-oss raw solution into thoughts/reply columns."""
     if "solution" in df.columns:
         column = "solution"
     elif "response" in df.columns:
@@ -123,7 +116,6 @@ def clean_and_split_gpt_oss_solution(df: pd.DataFrame) -> pd.DataFrame:
 
         reply_section = reply_section.strip()
 
-        # Always prepend the analysis channel token so deciles include the reasoning start marker.
         analysis_section = (
             f"{GPT_OSS_ANALYSIS_START}{analysis_section}" if analysis_section else GPT_OSS_ANALYSIS_START
         )
@@ -140,7 +132,6 @@ def build_deciles(
     *,
     skip_special_tokens: bool = True,
 ) -> dict:
-    """Return cumulative reasoning slices at 10% intervals."""
     text = text or ""
     tokens = tokenizer.encode(text, add_special_tokens=False)
 
@@ -161,12 +152,10 @@ def build_deciles(
 
 
 def build_deciles_with_special_tokens(text: str, tokenizer: AutoTokenizer) -> dict:
-    """Return deciles while preserving special tokens (needed for GPT-OSS tags)."""
     return build_deciles(text, tokenizer, skip_special_tokens=False)
 
 
 def build_choice_tokens(dataset: str, tokenizer) -> tuple[list[int], dict[int, str]]:
-    """Return allowed token ids and reverse map for dataset choices."""
     labels = ["A", "B", "C", "D"] if dataset == "gpqa" else [chr(ord("A") + i) for i in range(10)]
 
     label_to_token_ids: dict[str, set[int]] = {label: set() for label in labels}
@@ -174,16 +163,15 @@ def build_choice_tokens(dataset: str, tokenizer) -> tuple[list[int], dict[int, s
         ids = tokenizer.encode(label, add_special_tokens=False)
         if not ids:
             continue
-        token_id = ids[-1]  # use last token if multi-token encoding occurs
+        token_id = ids[-1]
         label_to_token_ids[label].add(token_id)
 
     token_ids: list[int] = []
     id_to_label: dict[int, str] = {}
     seen: set[int] = set()
     for label in labels:
-        for tid in sorted(label_to_token_ids[label]):  # sort for determinism
+        for tid in sorted(label_to_token_ids[label]):
             if tid in seen:
-                # If a token id somehow maps to multiple labels, keep the first occurrence.
                 continue
             seen.add(tid)
             token_ids.append(tid)
@@ -196,10 +184,6 @@ def compute_choice_logprobs(
     first_pos_logprobs,
     id_to_label: dict[int, str],
 ) -> dict[str, float]:
-    """Convert vLLM SampleLogprobs at position 0 into label -> logprob map.
-
-    Aggregates multiple token ids per label via log-sum-exp across all variants.
-    """
     if not id_to_label:
         return {}
 
@@ -227,7 +211,6 @@ def compute_choice_logprobs(
 
 
 def argmax_choice(choice_logprobs: dict[str, float]) -> str | None:
-    """Return label with highest logprob (ignoring NaNs)."""
     best_label: str | None = None
     best_value: float | None = None
     for label, value in choice_logprobs.items():
@@ -240,7 +223,6 @@ def argmax_choice(choice_logprobs: dict[str, float]) -> str | None:
 
 
 def compute_decile_flips(df: pd.DataFrame, group_keys: list[str]) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Add previous-decile prediction/flip columns and aggregate flip rates."""
     sort_keys = group_keys + ["id", "decile"]
     df_sorted = df.sort_values(sort_keys).copy()
 
@@ -263,15 +245,10 @@ def compute_decile_flips(df: pd.DataFrame, group_keys: list[str]) -> tuple[pd.Da
 
 
 def ensure_isolated_inductor_cache(model_key: str, force: bool = False) -> Path | None:
-    """
-    Set TORCHINDUCTOR_CACHE_DIR to an isolated per-process directory to prevent
-    collisions when multiple jobs run in parallel. Honors existing env if set,
-    unless force=True.
-    """
     existing_env = os.environ.get("TORCHINDUCTOR_CACHE_DIR")
     if existing_env and not force:
         existing_path = Path(existing_env)
-        # If the existing path is already scoped to this model, reuse it.
+
         if model_key in existing_path.parts:
             existing_path.mkdir(parents=True, exist_ok=True)
             return existing_path
