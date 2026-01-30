@@ -16,7 +16,10 @@ if TYPE_CHECKING:
 
 RNG = np.random.default_rng(0)
 BASELINE_DECILE = 0
+RNG = np.random.default_rng(0)
+BASELINE_DECILE = 0
 DECILES = tuple(range(10, 101, 10))
+ALL_DECILES = (BASELINE_DECILE,) + DECILES
 ALL_DECILES = (BASELINE_DECILE,) + DECILES
 GPT_OSS_ANALYSIS_START = "<|channel|>analysis<|message|>"
 QWEN_THINK_START = "<think>\n"
@@ -46,7 +49,6 @@ def dataset_choice_labels(dataset: str) -> tuple[str, ...]:
 
 @functools.lru_cache(maxsize=None)
 def get_tokenizer(model_key: str) -> AutoTokenizer:
-    """Load and cache a tokenizer for the given model key."""
     if model_key not in MODEL_CONFIGS:
         raise KeyError(f"Unknown model key '{model_key}'.")
     return AutoTokenizer.from_pretrained(MODEL_CONFIGS[model_key]["model_id"])
@@ -166,12 +168,14 @@ def build_choice_tokens(dataset: str, tokenizer) -> tuple[list[int], dict[int, s
         if not ids:
             continue
         token_id = ids[-1]
+        token_id = ids[-1]
         label_to_token_ids[label].add(token_id)
 
     token_ids: list[int] = []
     id_to_label: dict[int, str] = {}
     seen: set[int] = set()
     for label in labels:
+        for tid in sorted(label_to_token_ids[label]):
         for tid in sorted(label_to_token_ids[label]):
             if tid in seen:
                 continue
