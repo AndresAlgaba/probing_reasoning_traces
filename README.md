@@ -34,11 +34,11 @@ This repository contains the code for reproducing the experiments in the paper *
 └── requirements.txt
 ```
 
-## Data and Outputs
+## Results, Data, and Outputs
 
 Due to the size of the results, data, and outputs (~12GB), they are provided via an anonymous link:
 
-**[Data and Outputs](https://figshare.com/s/68347c2a5cc02cdf9d08)**
+**[Results, Data, and Outputs](https://doi.org/10.5281/zenodo.18430487)**
 
 After downloading, place the `results/`, `data/`, and `outputs/` folders in the repository root.
 
